@@ -1,5 +1,6 @@
-import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { getPlan, type PlanId } from '../../billing/pricing'
+import { insertTable, isTableCommand } from '../../editor/table'
 import { enqueue, type Change } from '../../sync/saveHandler'
 import { checkAttachment } from '../../upload/attachmentLimit'
 import { reportError } from '../lib/errors'
@@ -20,6 +21,10 @@ function inlineMarkdown(text: string): ReactNode[] {
   )
 }
 
+function tableCells(line: string): string[] {
+  return line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((cell) => cell.trim())
+}
+
 function MarkdownPreview({ body }: { body: string }) {
   if (!body.trim()) return <p className="preview-placeholder">내용을 작성하면 이곳에서 미리 볼 수 있어요.</p>
   const lines = body.split('\n')
@@ -27,6 +32,22 @@ function MarkdownPreview({ body }: { body: string }) {
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index]
     if (!line.trim()) continue
+    if (line.includes('|')) {
+      const start = index
+      const rows: string[][] = []
+      while (index < lines.length && lines[index].includes('|')) {
+        rows.push(tableCells(lines[index]))
+        index += 1
+      }
+      const hasHeader = rows.length > 1 && rows[1].every((cell) => /^:?-{3,}:?$/.test(cell))
+      const columnCount = Math.max(...rows.map((row) => row.length))
+      blocks.push(<table key={start}>
+        {hasHeader && <thead><tr>{Array.from({ length: columnCount }, (_, column) => <th key={column} scope="col">{inlineMarkdown(rows[0][column] ?? '')}</th>)}</tr></thead>}
+        <tbody>{rows.slice(hasHeader ? 2 : 0).map((row, rowIndex) => <tr key={rowIndex}>{Array.from({ length: columnCount }, (_, column) => <td key={column}>{inlineMarkdown(row[column] ?? '')}</td>)}</tr>)}</tbody>
+      </table>)
+      index -= 1
+      continue
+    }
     const heading = /^(#{1,3})\s+(.+)$/.exec(line)
     if (heading) {
       const content = inlineMarkdown(heading[2])
@@ -69,14 +90,35 @@ export default function Editor({ note, plan, onChange, onDelete }: EditorProps) 
   const [previews, setPreviews] = useState<Record<string, string>>({})
   const objectUrls = useRef(new Set<string>())
   const fileInput = useRef<HTMLInputElement>(null)
+  const bodyInput = useRef<HTMLTextAreaElement>(null)
+  const pendingCursor = useRef<number | null>(null)
 
   useEffect(() => { setTagDraft('') }, [note.id])
   useEffect(() => () => { objectUrls.current.forEach((url) => URL.revokeObjectURL(url)) }, [])
+  useLayoutEffect(() => {
+    if (pendingCursor.current !== null) {
+      bodyInput.current?.setSelectionRange(pendingCursor.current, pendingCursor.current)
+      pendingCursor.current = null
+    }
+  }, [note.body])
 
   function update(field: Change['field'], value: string | string[]) {
     const at = Date.now()
     onChange({ ...note, [field]: value, updatedAt: at })
     enqueue({ noteId: note.id, field, value, at })
+  }
+
+  function handleBodyKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== 'Enter' || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return
+    const cursor = event.currentTarget.selectionStart
+    const lineStart = note.body.lastIndexOf('\n', cursor - 1) + 1
+    const nextNewline = note.body.indexOf('\n', cursor)
+    const lineEnd = nextNewline === -1 ? note.body.length : nextNewline
+    if (event.currentTarget.selectionEnd > lineEnd || !isTableCommand(note.body.slice(lineStart, lineEnd))) return
+    event.preventDefault()
+    const table = `${insertTable()}\n`
+    pendingCursor.current = lineStart + table.length
+    update('body', note.body.slice(0, lineStart) + table + note.body.slice(lineEnd))
   }
 
   function addTag() {
@@ -130,7 +172,7 @@ export default function Editor({ note, plan, onChange, onDelete }: EditorProps) 
       <div className={`editor-workspace${preview ? ' with-preview' : ''}`}>
         <section className="editor-panel" aria-label="마크다운 작성">
           <div className="panel-heading"><label htmlFor="note-body">작성</label><span>Markdown</span></div>
-          <textarea id="note-body" className="body-input" value={note.body} placeholder="생각을 자유롭게 적어보세요. 마크다운으로 내용을 정리할 수 있어요." onChange={(event) => update('body', event.target.value)} spellCheck={false} />
+          <textarea ref={bodyInput} id="note-body" className="body-input" value={note.body} placeholder="생각을 자유롭게 적어보세요. /표 입력 후 Enter로 표를 넣을 수 있어요." onChange={(event) => update('body', event.target.value)} onKeyDown={handleBodyKeyDown} spellCheck={false} />
         </section>
         {preview && <section className="preview-panel" aria-label="노트 미리보기"><div className="panel-heading"><span>미리보기</span><span>읽기 모드</span></div><MarkdownPreview body={note.body} /></section>}
       </div>
