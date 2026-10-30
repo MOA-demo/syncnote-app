@@ -2222,3 +2222,18 @@ p {
     width:calc(100vw - 30px);
   }
 }
+
+.tag-name {
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+}
+.tag-color-menu button[data-color="gray"] { background: #a1a9b6; }
+.tag-color-menu button[data-color="red"] { background: #bd6672; }
+.tag-color-menu button[data-color="orange"] { background: #b98a48; }
+.tag-color-menu button[data-color="green"] { background: #6e9e7c; }
+.tag-color-menu button[data-color="blue"] { background: #5f88c7; }
+.tag-color-menu button[data-color="purple"] { background: #9e7bc1; }
+.tag-color-menu button[aria-pressed="true"] { outline: 2px solid #6e86ab; outline-offset: 2px; }

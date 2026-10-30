@@ -1,6 +1,8 @@
+import type { TagColor } from '../../editor/tags'
+
 export interface Attachment { name: string; size: number; type: string; previewUrl?: string }
 export interface Note {
-  id: string; title: string; body: string; tags: string[]; attachments: Attachment[]
+  id: string; title: string; body: string; tags: { name: string; color?: TagColor }[]; attachments: Attachment[]
   updatedAt: number; version: number; baseVersion: number; syncedAt?: number
 }
 
@@ -36,9 +38,9 @@ export function createNote(): Note {
 function sampleNotes(): Note[] {
   const now = Date.now()
   return [
-    { ...createNote(), title: '주간 회의록 (11/3)', body: meeting, tags: ['업무', '회의'], updatedAt: now },
-    { ...createNote(), title: '출장 준비물', body: '# 출장 준비물\n\n가볍게 떠나고, 빠짐없이 챙기기.\n\n- [ ] 노트북과 충전기\n- [ ] 신분증과 교통편 예약 확인\n- [ ] 발표 자료와 회의 안건\n- [ ] 명함과 필기구\n- [x] 숙소 예약 확인', tags: ['체크리스트'], updatedAt: now - 3_600_000 },
-    { ...createNote(), title: '아이디어 메모', body: '# 작은 생각을 모으는 곳\n\n아침 산책 중 떠오른 생각.\n\n- 하루의 끝에 기억하고 싶은 문장 하나 남기기\n- 다음 여행에서 보고 싶은 장소 모으기\n- 바쁜 날에도 생각을 놓치지 않도록 짧게 기록하기\n\n**완벽하게 정리하지 않아도 괜찮아요.** 일단 적어 두면 다음 생각이 이어집니다.', tags: ['아이디어', '일상'], updatedAt: now - 86_400_000 },
+    { ...createNote(), title: '주간 회의록 (11/3)', body: meeting, tags: [{ name: '업무' }, { name: '회의' }], updatedAt: now },
+    { ...createNote(), title: '출장 준비물', body: '# 출장 준비물\n\n가볍게 떠나고, 빠짐없이 챙기기.\n\n- [ ] 노트북과 충전기\n- [ ] 신분증과 교통편 예약 확인\n- [ ] 발표 자료와 회의 안건\n- [ ] 명함과 필기구\n- [x] 숙소 예약 확인', tags: [{ name: '체크리스트' }], updatedAt: now - 3_600_000 },
+    { ...createNote(), title: '아이디어 메모', body: '# 작은 생각을 모으는 곳\n\n아침 산책 중 떠오른 생각.\n\n- 하루의 끝에 기억하고 싶은 문장 하나 남기기\n- 다음 여행에서 보고 싶은 장소 모으기\n- 바쁜 날에도 생각을 놓치지 않도록 짧게 기록하기\n\n**완벽하게 정리하지 않아도 괜찮아요.** 일단 적어 두면 다음 생각이 이어집니다.', tags: [{ name: '아이디어' }, { name: '일상' }], updatedAt: now - 86_400_000 },
   ]
 }
 
@@ -47,7 +49,20 @@ export function loadNotes(): Note[] {
   if (raw) {
     try {
       const notes: unknown = JSON.parse(raw)
-      if (Array.isArray(notes) && notes.every((note) => note && typeof note.id === 'string' && typeof note.body === 'string')) return notes as Note[]
+      if (Array.isArray(notes) && notes.every((note) => note && typeof note.id === 'string' && typeof note.body === 'string')) {
+        const storedNotes = notes as (Omit<Note, 'tags'> & { tags: (string | Note['tags'][number])[] })[]
+        let changed = false
+        const migrated = storedNotes.map((note): Note => ({
+          ...note,
+          tags: note.tags.map((tag) => {
+            if (typeof tag !== 'string') return tag
+            changed = true
+            return { name: tag }
+          }),
+        }))
+        if (changed) saveNotesLocal(migrated)
+        return migrated
+      }
     } catch { /* 읽을 수 없는 데이터는 초기 노트로 복구 */ }
   }
   const notes = sampleNotes()

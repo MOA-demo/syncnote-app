@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import { getPlan, type PlanId } from '../../billing/pricing'
 import { insertTable, isTableCommand } from '../../editor/table'
+import { setTagColor, TAG_COLORS, type TagColor } from '../../editor/tags'
 import { enqueue, type Change } from '../../sync/saveHandler'
 import { checkAttachment } from '../../upload/attachmentLimit'
 import { reportError } from '../lib/errors'
@@ -11,6 +12,10 @@ interface EditorProps {
   plan: PlanId
   onChange: (note: Note) => void
   onDelete: () => void
+}
+
+const TAG_COLOR_LABELS: Record<TagColor, string> = {
+  gray: '회색', red: '빨강', orange: '주황', green: '초록', blue: '파랑', purple: '보라',
 }
 
 function inlineMarkdown(text: string): ReactNode[] {
@@ -87,13 +92,14 @@ function formatSize(bytes: number): string {
 export default function Editor({ note, plan, onChange, onDelete }: EditorProps) {
   const [preview, setPreview] = useState(true)
   const [tagDraft, setTagDraft] = useState('')
+  const [colorTag, setColorTag] = useState<string | null>(null)
   const [previews, setPreviews] = useState<Record<string, string>>({})
   const objectUrls = useRef(new Set<string>())
   const fileInput = useRef<HTMLInputElement>(null)
   const bodyInput = useRef<HTMLTextAreaElement>(null)
   const pendingCursor = useRef<number | null>(null)
 
-  useEffect(() => { setTagDraft('') }, [note.id])
+  useEffect(() => { setTagDraft(''); setColorTag(null) }, [note.id])
   useEffect(() => () => { objectUrls.current.forEach((url) => URL.revokeObjectURL(url)) }, [])
   useLayoutEffect(() => {
     if (pendingCursor.current !== null) {
@@ -102,7 +108,7 @@ export default function Editor({ note, plan, onChange, onDelete }: EditorProps) 
     }
   }, [note.body])
 
-  function update(field: Change['field'], value: string | string[]) {
+  function update(field: Change['field'], value: string | Note['tags']) {
     const at = Date.now()
     onChange({ ...note, [field]: value, updatedAt: at })
     enqueue({ noteId: note.id, field, value, at })
@@ -124,7 +130,7 @@ export default function Editor({ note, plan, onChange, onDelete }: EditorProps) 
   function addTag() {
     const value = tagDraft.trim().replace(/^#/, '')
     if (!value) return
-    if (!note.tags.includes(value)) update('tags', [...note.tags, value])
+    if (!note.tags.some((tag) => tag.name === value)) update('tags', [...note.tags, { name: value }])
     setTagDraft('')
   }
 
@@ -164,7 +170,13 @@ export default function Editor({ note, plan, onChange, onDelete }: EditorProps) 
       <div className="editor-meta"><span>{new Date(note.updatedAt).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })} 수정</span><span aria-hidden="true">·</span><span>{note.body.length.toLocaleString('ko-KR')}자</span></div>
       <div className="tag-row">
         <svg viewBox="0 0 20 20" width="16" height="16" fill="none" aria-hidden="true"><path d="m3 3 6.5.1L17 10.6 10.6 17 3.1 9.5 3 3Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /><circle cx="6.5" cy="6.5" r="1" fill="currentColor" /></svg>
-        {note.tags.map((tag) => <span className="tag" key={tag}>{tag}<button className="tag-remove" type="button" aria-label={`${tag} 태그 삭제`} onClick={() => update('tags', note.tags.filter((item) => item !== tag))}>×</button></span>)}
+        {note.tags.map((tag) => <span className="tag" data-color={tag.color ?? 'gray'} key={tag.name}>
+          <button className="tag-name" type="button" aria-label={`${tag.name} 태그 색상 선택`} aria-expanded={colorTag === tag.name} aria-controls={colorTag === tag.name ? 'tag-color-picker' : undefined} onClick={() => setColorTag(colorTag === tag.name ? null : tag.name)}>{tag.name}</button>
+          <button className="tag-remove" type="button" aria-label={`${tag.name} 태그 삭제`} onClick={() => { update('tags', note.tags.filter((item) => item.name !== tag.name)); if (colorTag === tag.name) setColorTag(null) }}>×</button>
+        </span>)}
+        {colorTag && <div id="tag-color-picker" className="tag-color-menu" role="group" aria-label={`${colorTag} 태그 색상`} onKeyDown={(event) => { if (event.key === 'Escape') setColorTag(null) }}>
+          {TAG_COLORS.map((color) => <button type="button" key={color} data-color={color} title={TAG_COLOR_LABELS[color]} aria-label={TAG_COLOR_LABELS[color]} aria-pressed={(note.tags.find((tag) => tag.name === colorTag)?.color ?? 'gray') === color} onClick={() => { update('tags', setTagColor(note, colorTag, color).tags); setColorTag(null) }} />)}
+        </div>}
         <label className="sr-only" htmlFor="note-tag">태그 추가</label>
         <input id="note-tag" className="tag-input" value={tagDraft} placeholder="태그 추가 후 Enter" onChange={(event) => setTagDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.nativeEvent.isComposing) { event.preventDefault(); addTag() } }} />
       </div>
