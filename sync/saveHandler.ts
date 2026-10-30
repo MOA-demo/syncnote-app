@@ -10,6 +10,9 @@ const listeners = new Set<(s: SaveState) => void>()
 let queue: Change[] = []
 let attempt = 0
 let generation = 0
+let active = false
+export const SAVE_CONFIG = { maxBatch: 20, flushDelayMs: 800 }
+let timer: ReturnType<typeof setTimeout> | null = null
 const retryTimers = new Set<ReturnType<typeof setTimeout>>()
 export function onSaveState(fn: (s: SaveState) => void) { listeners.add(fn); return () => { listeners.delete(fn) } }
 function emit(s: SaveState) { listeners.forEach((fn) => fn(s)) }
@@ -19,29 +22,49 @@ export function resetQueue(): void {
   generation += 1
   queue = []
   attempt = 0
+  active = false
+  if (timer) clearTimeout(timer)
+  timer = null
   retryTimers.forEach(clearTimeout)
   retryTimers.clear()
   emit({ kind: 'idle' })
 }
 
-export function enqueue(change: Change) { queue.push(change); void flushBatch() }
+export function enqueue(change: Change) {
+  queue.push(change)
+  if (timer) clearTimeout(timer)
+  timer = setTimeout(() => void flushBatch(), SAVE_CONFIG.flushDelayMs)
+}
+
+// 같은 노트·같은 필드의 변경은 마지막 값만 남긴다
+export function coalesce(changes: Change[]): Change[] {
+  const last = new Map<string, Change>()
+  for (const c of changes) last.set(c.noteId + ':' + c.field, c)
+  return [...last.values()]
+}
 
 export async function flushBatch(): Promise<void> {
-  if (queue.length === 0) return
+  if (queue.length === 0 || active) return
+  if (timer) clearTimeout(timer)
+  timer = null
+  active = true
   retryTimers.forEach(clearTimeout)
   retryTimers.clear()
   const currentGeneration = generation
-  const batch = queue.splice(0, queue.length)
+  const raw = queue.splice(0, SAVE_CONFIG.maxBatch)
+  const batch = coalesce(raw)
   emit({ kind: 'saving' })
   try {
     const res = await mockServer.save({ changes: batch })
     if (currentGeneration !== generation) return
     attempt = 0
+    active = false
     emit({ kind: 'saved', at: res.savedAt })
     if (queue.length > 0) void flushBatch()
   } catch (e) {
     if (currentGeneration !== generation) return
-    queue = batch.concat(queue) // 실패한 변경은 기기에 보관
+    active = false
+    queue = raw.concat(queue) // 실패한 변경은 기기에 보관
     attempt += 1
     const code = e instanceof ServerError ? e.code : 'E-502'
     emit({ kind: 'retrying', code, attempt })
