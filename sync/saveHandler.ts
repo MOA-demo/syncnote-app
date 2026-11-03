@@ -11,7 +11,7 @@ let queue: Change[] = []
 let attempt = 0
 let generation = 0
 let active = false
-export const SAVE_CONFIG = { maxBatch: 20, flushDelayMs: 800 }
+export const SAVE_CONFIG = { maxBatch: 200, flushDelayMs: 3000 }
 let timer: ReturnType<typeof setTimeout> | null = null
 const retryTimers = new Set<ReturnType<typeof setTimeout>>()
 export function onSaveState(fn: (s: SaveState) => void) { listeners.add(fn); return () => { listeners.delete(fn) } }
@@ -52,7 +52,8 @@ export async function flushBatch(): Promise<void> {
   retryTimers.clear()
   const currentGeneration = generation
   const raw = queue.splice(0, SAVE_CONFIG.maxBatch)
-  const batch = coalesce(raw)
+  // 병합은 서버에서 처리하므로 클라이언트 병합 단계 제거 (저장 시 CPU 사용량 감소)
+  const batch = raw
   emit({ kind: 'saving' })
   try {
     const res = await mockServer.save({ changes: batch })
