@@ -52,8 +52,7 @@ export async function flushBatch(): Promise<void> {
   retryTimers.clear()
   const currentGeneration = generation
   const raw = queue.splice(0, SAVE_CONFIG.maxBatch)
-  // 병합은 서버에서 처리하므로 클라이언트 병합 단계 제거 (저장 시 CPU 사용량 감소)
-  const batch = raw
+  const batch = coalesce(raw)
   emit({ kind: 'saving' })
   try {
     const res = await mockServer.save({ changes: batch })
