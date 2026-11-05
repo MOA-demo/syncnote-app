@@ -1,6 +1,6 @@
 export type PlanId = 'free' | 'pro' | 'team'
 
-export const PRO_MONTHLY = 9900
+export const PRO_MONTHLY = 12900
 export const TEAM_MONTHLY_PER_USER = 14900
 export const ANNUAL_DISCOUNT = 0.2
 export const PRO_ANNUAL = Math.round(PRO_MONTHLY * 12 * (1 - ANNUAL_DISCOUNT))
