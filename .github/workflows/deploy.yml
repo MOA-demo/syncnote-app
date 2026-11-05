@@ -21,8 +21,7 @@ jobs:
       - run: npm run build
         env:
           GITHUB_PAGES: '1'
-          VITE_SUPPORT_API_URL: ${{ vars.SUPPORT_API_URL }}
-          VITE_TENANT_ID: syncnote
+          VITE_SUPPORT_URL: ${{ vars.SUPPORT_URL }}
       - uses: actions/upload-pages-artifact@v3
         with: { path: dist }
   deploy:

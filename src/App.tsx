@@ -14,7 +14,7 @@ import PlansPage from './components/PlansPage'
 import SettingsPage from './components/SettingsPage'
 import Toasts from './components/Toasts'
 import SessionExpired from './components/SessionExpired'
-import SupportWidget from './components/SupportWidget'
+import SupportButton from './components/SupportButton'
 
 type View = 'notes' | 'plans' | 'settings'
 function initialSession(): { session: Session | null; expired: boolean } {
@@ -82,6 +82,6 @@ export default function App() {
           <footer className="app-version">싱크노트 v{APP_VERSION}<span>생각이 이어지는 공간</span></footer>
         </main>
       </div>}
-    <SupportWidget /><Toasts />
+    <SupportButton /><Toasts />
   </>
 }
